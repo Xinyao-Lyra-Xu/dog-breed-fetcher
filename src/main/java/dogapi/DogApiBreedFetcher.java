@@ -24,12 +24,42 @@ public class DogApiBreedFetcher implements BreedFetcher {
      * @throws BreedNotFoundException if the breed does not exist (or if the API call fails for any reason)
      */
     @Override
-    public List<String> getSubBreeds(String breed) {
-        // TODO Task 1: Complete this method based on its provided documentation
-        //      and the documentation for the dog.ceo API. You may find it helpful
-        //      to refer to the examples of using OkHttpClient from the last lab,
-        //      as well as the code for parsing JSON responses.
-        // return statement included so that the starter code can compile and run.
-        return new ArrayList<>();
+    public List<String> getSubBreeds(String breed) throws BreedNotFoundException {
+        if (breed == null || breed.isBlank()) {
+            throw new BreedNotFoundException("breed must not be empty");
+        }
+
+        String url = "https://dog.ceo/api/breed/" + breed.toLowerCase(Locale.ROOT) + "/list";
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful() || response.body() == null) {
+                throw new BreedNotFoundException("HTTP " + response.code() + " when fetching: " + breed);
+            }
+
+            String json = response.body().string();
+            JSONObject obj = new JSONObject(json);
+
+            String status = obj.optString("status", "");
+            if (!"success".equalsIgnoreCase(status)) {
+                String apiMsg = obj.optString("message", "unknown error");
+                throw new BreedNotFoundException("Breed not found: " + breed + " (" + apiMsg + ")");
+            }
+
+            JSONArray arr = obj.optJSONArray("message");
+            List<String> result = new ArrayList<>();
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    result.add(arr.getString(i));
+                }
+            }
+            return Collections.unmodifiableList(result);
+
+        } catch (IOException | org.json.JSONException e) {
+            throw new BreedNotFoundException("Failed to fetch sub-breeds for: " + breed);
+        }
     }
 }
