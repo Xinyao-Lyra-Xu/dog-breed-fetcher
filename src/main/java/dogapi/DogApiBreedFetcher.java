@@ -25,19 +25,20 @@ public class DogApiBreedFetcher implements BreedFetcher {
      */
     @Override
     public List<String> getSubBreeds(String breed) throws BreedNotFoundException {
-        if (breed == null || breed.isBlank()) {
-            throw new BreedNotFoundException("breed must not be empty");
+        // ① 规范化输入：去空格 + 小写
+        String normalized = (breed == null) ? "" : breed.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            // 用“breed 名”的构造器，语义：这个 breed 不存在 / 非法
+            throw new BreedNotFoundException("(empty)");
         }
 
-        String url = "https://dog.ceo/api/breed/" + breed.toLowerCase(Locale.ROOT) + "/list";
-        Request request = new Request.Builder()
-                .url(url)
-                .get()
-                .build();
+        String url = "https://dog.ceo/api/breed/" + normalized + "/list";
+        Request request = new Request.Builder().url(url).get().build();
 
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
-                throw new BreedNotFoundException("HTTP " + response.code() + " when fetching: " + breed);
+                // ② 非 2xx：保留原始原因，不套“Breed not found:”前缀
+                throw new BreedNotFoundException("HTTP " + response.code() + " when fetching: " + normalized, null);
             }
 
             String json = response.body().string();
@@ -45,8 +46,8 @@ public class DogApiBreedFetcher implements BreedFetcher {
 
             String status = obj.optString("status", "");
             if (!"success".equalsIgnoreCase(status)) {
-                String apiMsg = obj.optString("message", "unknown error");
-                throw new BreedNotFoundException("Breed not found: " + breed + " (" + apiMsg + ")");
+                // ③ API 明确说这个主品种不存在时，用“breed 名”构造器
+                throw new BreedNotFoundException(normalized);
             }
 
             JSONArray arr = obj.optJSONArray("message");
@@ -59,7 +60,8 @@ public class DogApiBreedFetcher implements BreedFetcher {
             return Collections.unmodifiableList(result);
 
         } catch (IOException | org.json.JSONException e) {
-            throw new BreedNotFoundException("Failed to fetch sub-breeds for: " + breed);
+            // ④ 网络/解析错误 → 也按作业要求包装为 BreedNotFoundException（保留 cause）
+            throw new BreedNotFoundException("Failed to fetch sub-breeds for: " + normalized, e);
         }
     }
 }
